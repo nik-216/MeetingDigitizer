@@ -5,17 +5,13 @@ import threading
 import time
 import json
 import base64
-import signal
-import sys
 
-KAFKA_SERVER = "localhost:9092"  # If Kafka is in Docker, use localhost
+KAFKA_SERVER = "localhost:9094"
 CHUNK_SIZE = 4096  # bytes (used only for audio)
-
-stop_event = threading.Event()
 
 def create_kafka_producer():
     """Retry KafkaProducer connection until Kafka is ready."""
-    while not stop_event.is_set():
+    while True:
         try:
             producer = KafkaProducer(
                 bootstrap_servers=KAFKA_SERVER,
@@ -26,10 +22,8 @@ def create_kafka_producer():
         except NoBrokersAvailable:
             print("Kafka not available. Retrying in 2 seconds...", flush=True)
             time.sleep(2)
-    sys.exit(0)
 
 def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
-    """Stream audio chunks from mic to Kafka."""
     producer = create_kafka_producer()
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -43,23 +37,26 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
     print(f"🎙️ Streaming {topic} to Kafka ...", flush=True)
 
     try:
-        while not stop_event.is_set():
+        while True:
             chunk = process.stdout.read(CHUNK_SIZE)
             if not chunk:
                 break
+
             message = {
                 "timestamp": time.time(),
                 "data": base64.b64encode(chunk).decode("utf-8"),
             }
             producer.send(topic, message)
+
+            print(f"[Producer] Sent audio chunk (size={len(chunk)})", flush=True)
+
     finally:
-        process.terminate()
+        process.stdout.close()
         process.wait()
         producer.flush()
         print(f"🏁 Finished streaming {topic}", flush=True)
 
 def stream_video_frames(topic: str, ffmpeg_cmd: list):
-    """Extract video frames at 1 fps and stream to Kafka as JSON messages."""
     producer = create_kafka_producer()
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -76,7 +73,7 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
     buffer = b""
 
     try:
-        while not stop_event.is_set():
+        while True:
             chunk = process.stdout.read(4096)
             if not chunk:
                 break
@@ -88,13 +85,14 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
             while start != -1 and end != -1 and end > start:
                 jpeg_bytes = buffer[start:end+2]
                 buffer = buffer[end+2:]
-                frame_id += 1
 
+                frame_id += 1
                 message = {
                     "frame_id": frame_id,
                     "timestamp": time.time(),
                     "frame": base64.b64encode(jpeg_bytes).decode("utf-8"),
                 }
+
                 producer.send(topic, message)
                 print(f"[Producer] Sent frame {frame_id} ({len(jpeg_bytes)} bytes)", flush=True)
 
@@ -102,43 +100,40 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
                 end = buffer.find(b"\xff\xd9")
 
     finally:
-        process.terminate()
+        process.stdout.close()
         process.wait()
         producer.flush()
         print(f"🏁 Finished streaming {topic}", flush=True)
 
-def signal_handler(sig, frame):
-    print("\n🛑 Ctrl+C detected! Stopping streams...", flush=True)
-    stop_event.set()
 
 if __name__ == "__main__":
-    print("🚀 Starting the producer (mic + camera)...", flush=True)
-    signal.signal(signal.SIGINT, signal_handler)
+    print("🚀 Starting the producer...", flush=True)
 
-    # 🎙️ AUDIO: microphone input (device 0)
+    # Use avfoundation devices on macOS
+    # Check devices with: ffmpeg -f avfoundation -list_devices true -i ""
+
+    # AUDIO: default mic (device 0)
     audio_cmd = [
-        "ffmpeg", "-f", "avfoundation",
-        "-i", ":0",                 # audio device 0
+        "ffmpeg", "-f", "avfoundation", "-i", ":0",
         "-f", "s16le", "-acodec", "pcm_s16le",
         "-ac", "1", "-ar", "16000",
         "-vn", "-loglevel", "warning", "-"
     ]
 
-    # 🎥 VIDEO: webcam input (device 0)
+    # VIDEO: default webcam (device 0)
     video_cmd = [
         "ffmpeg", "-f", "avfoundation",
-        "-framerate", "30", "-video_size", "640x480",
-        "-i", "0:none",             # video device 0, no audio
-        "-vf", "fps=1",             # downsample to 1 fps
+        "-framerate", "30", "-video_size", "1280x720",
+        "-pixel_format", "uyvy422",
+        "-i", "0:none",               # FaceTime HD Camera, no audio
+        "-vf", "fps=1",               # downsample to 1 frame per second
         "-f", "image2pipe", "-qscale:v", "2",
         "-vcodec", "mjpeg", "-loglevel", "warning", "-"
     ]
 
     t1 = threading.Thread(target=stream_audio_to_kafka, args=("audio-stream", audio_cmd))
     t2 = threading.Thread(target=stream_video_frames, args=("video-stream", video_cmd))
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
+    t1.start(); t2.start()
+    t1.join(); t2.join()
 
     print("✅ Done streaming audio and video.", flush=True)

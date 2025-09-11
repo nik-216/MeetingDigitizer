@@ -1,27 +1,33 @@
 services:
   kafka:
     build: ./kafka
+    image: bitnami/kafka:latest
+    hostname: kafka
+    container_name: kafka
     ports:
-      - "9092:9092"
+      - "9092:9092"   # internal (for containers)
+      - "9094:9094"   # external (for host / macOS)
     environment:
       KAFKA_CFG_NODE_ID: 1
       KAFKA_CFG_PROCESS_ROLES: controller,broker
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_KRAFT_CLUSTER_ID: my-cluster-id
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
     volumes:
       - kafka_data:/bitnami/kafka
 
-  producer:
-    build: ./producer
-    restart: on-failure
-    depends_on:
-      - kafka
-    volumes:
-      - ./input:/input
+
+  # producer:
+  #   build: ./producer
+  #   restart: on-failure
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./input:/input
 
   spark:
     build: ./spark
@@ -39,16 +45,17 @@ services:
   #   volumes:
   #     - ./video-consumer:/app
   #     - ./output/video:/output
+  
   display:
     build: ./display
     restart: on-failure
     depends_on:
       - kafka
     environment:
-      - DISPLAY=host.docker.internal:0.0
+      - DISPLAY=host.docker.internal:0
     volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix
       - ./display:/app
+
 
   word-consumer:
     build: ./word-consumer
