@@ -7,6 +7,9 @@ import time
 from collections import deque
 from kafka import KafkaConsumer, KafkaProducer
 from paddleocr import PaddleOCR
+from transformers import BlipProcessor, BlipForConditionalGeneration
+from PIL import Image
+import torch
 
 # Kafka settings
 KAFKA_SERVER = "kafka:9092"
@@ -23,6 +26,15 @@ os.makedirs(RAW_DIR, exist_ok=True)
 
 # Initialize OCR
 ocr = PaddleOCR(lang='en', show_log=False, use_angle_cls=False)
+
+# Load BLIP model once
+device = "cuda" if torch.cuda.is_available() else "cpu"
+blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+blip_model = BlipForConditionalGeneration.from_pretrained(
+    "Salesforce/blip-image-captioning-base",
+    use_safetensors=True
+).to(device)
+
 
 # Kafka Producer
 producer = KafkaProducer(
@@ -148,6 +160,22 @@ def send_diagram_to_kafka(diagram_data, frame_id, diagram_crop):
     except Exception as e:
         print(f"❌ KAFKA SEND FAILED for frame {frame_id}: {e}")
         return False
+    
+def infer_diagram_local(crop_bgr) -> str:
+    """Generate a description/inference for the diagram crop using BLIP."""
+    try:
+        # Convert OpenCV (BGR) to PIL (RGB)
+        crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(crop_rgb)
+
+        inputs = blip_processor(pil_img, return_tensors="pt").to(device)
+        out = blip_model.generate(**inputs, max_new_tokens=50)
+        caption = blip_processor.decode(out[0], skip_special_tokens=True)
+        return caption
+    except Exception as e:
+        print(f"⚠️ BLIP inference failed: {e}")
+        return ""
+
 
 def extract_text_from_diagram(diagram_region):
     try:
@@ -205,13 +233,15 @@ def process_frame(message_value, frame_id):
                 continue
 
             extracted_text = extract_text_from_diagram(diagram_crop)
+            blip_caption = infer_diagram_local(diagram_crop)
             diagram_data = {
                 'type': diagram_type,
                 'bbox': region['bbox'],
                 'area': region['area'],
                 'aspect_ratio': region['aspect_ratio'],
                 'text': extracted_text,
-                'confidence': min(1.0, len(extracted_text) * 0.1 + 0.7)
+                'confidence': min(1.0, len(extracted_text) * 0.1 + 0.7),
+                'inference': blip_caption
             }
             detected_diagrams.append((diagram_data, diagram_crop))
             duplicate_filter.add_detection(diagram_type, region['bbox'], timestamp, frame_id)

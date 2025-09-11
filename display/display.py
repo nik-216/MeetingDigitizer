@@ -90,6 +90,10 @@ def consume_diagram(consumer, container, canvas):
             ) if extracted else "(no text)"
         elif not extracted:
             extracted = "(no text)"
+            
+        inference = msg.get("inference", "").strip()
+        if not inference:
+            inference = "(no inference)"
 
         text = (f"[Frame {msg['frame_id']}] Diagram: {msg['diagram_type']} "
                 f"(Conf: {msg['confidence']:.2f}, Area: {msg['area']}, "
@@ -102,6 +106,14 @@ def consume_diagram(consumer, container, canvas):
             wraplength=480
         )
         lbl.pack(anchor="w", padx=5, pady=2)
+        
+        inf_lbl = tk.Label(
+            container, text=f"Inference: {inference}",
+            font=("Arial", 12, "italic"),
+            anchor="w", justify="left", bg="black", fg="cyan",
+            wraplength=480
+        )
+        inf_lbl.pack(anchor="w", padx=5, pady=2)
 
         # 🔥 If image is present, decode and display it
         if "diagram_image" in msg:
