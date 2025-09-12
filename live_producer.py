@@ -17,7 +17,7 @@ def create_kafka_producer():
                 bootstrap_servers=KAFKA_SERVER,
                 value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             )
-            print("✅ Connected to Kafka.", flush=True)
+            print("Connected to Kafka.", flush=True)
             return producer
         except NoBrokersAvailable:
             print("Kafka not available. Retrying in 2 seconds...", flush=True)
@@ -54,7 +54,7 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
         process.stdout.close()
         process.wait()
         producer.flush()
-        print(f"🏁 Finished streaming {topic}", flush=True)
+        print(f"Finished streaming {topic}", flush=True)
 
 def stream_video_frames(topic: str, ffmpeg_cmd: list):
     producer = create_kafka_producer()
@@ -67,7 +67,7 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
                 print(f"[FFmpeg:{topic}] {line}", flush=True)
 
     threading.Thread(target=log_stderr, daemon=True).start()
-    print(f"🎥 Streaming {topic} to Kafka ...", flush=True)
+    print(f"Streaming {topic} to Kafka ...", flush=True)
 
     frame_id = 0
     buffer = b""
@@ -103,11 +103,11 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
         process.stdout.close()
         process.wait()
         producer.flush()
-        print(f"🏁 Finished streaming {topic}", flush=True)
+        print(f"Finished streaming {topic}", flush=True)
 
 
 if __name__ == "__main__":
-    print("🚀 Starting the producer...", flush=True)
+    print("Starting the producer...", flush=True)
 
     # Use avfoundation devices on macOS
     # Check devices with: ffmpeg -f avfoundation -list_devices true -i ""
@@ -136,4 +136,4 @@ if __name__ == "__main__":
     t1.start(); t2.start()
     t1.join(); t2.join()
 
-    print("✅ Done streaming audio and video.", flush=True)
+    print("Done streaming audio and video.", flush=True)

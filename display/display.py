@@ -50,7 +50,7 @@ def consume_audio(consumer, container, canvas):
         lbl = tk.Label(
             container, text=text, font=("Arial", 12),
             anchor="w", justify="left", bg="black", fg="white",
-            wraplength=480  # 👈 ensures text fits inside panel
+            wraplength=480  # ensures text fits inside panel
         )
         lbl.pack(anchor="w", padx=5, pady=2)
 
@@ -91,9 +91,9 @@ def consume_diagram(consumer, container, canvas):
         elif not extracted:
             extracted = "(no text)"
             
-        inference = msg.get("inference", "").strip()
-        if not inference:
-            inference = "(no inference)"
+        # inference = msg.get("inference", "").strip()
+        # if not inference:
+        #     inference = "(no inference)"
 
         text = (f"[Frame {msg['frame_id']}] Diagram: {msg['diagram_type']} "
                 f"(Conf: {msg['confidence']:.2f}, Area: {msg['area']}, "
@@ -107,15 +107,15 @@ def consume_diagram(consumer, container, canvas):
         )
         lbl.pack(anchor="w", padx=5, pady=2)
         
-        inf_lbl = tk.Label(
-            container, text=f"Inference: {inference}",
-            font=("Arial", 12, "italic"),
-            anchor="w", justify="left", bg="black", fg="cyan",
-            wraplength=480
-        )
-        inf_lbl.pack(anchor="w", padx=5, pady=2)
+        # inf_lbl = tk.Label(
+        #     container, text=f"Inference: {inference}",
+        #     font=("Arial", 12, "italic"),
+        #     anchor="w", justify="left", bg="black", fg="cyan",
+        #     wraplength=480
+        # )
+        # inf_lbl.pack(anchor="w", padx=5, pady=2)
 
-        # 🔥 If image is present, decode and display it
+        # If image is present, decode and display it
         if "diagram_image" in msg:
             try:
                 img_bytes = base64.b64decode(msg["diagram_image"])
@@ -127,7 +127,7 @@ def consume_diagram(consumer, container, canvas):
                 img_label.image = tk_img  # keep reference
                 img_label.pack(anchor="w", padx=5, pady=5)
             except Exception as e:
-                print(f"⚠️ Failed to render diagram image: {e}")
+                print(f"Failed to render diagram image: {e}")
 
         if is_at_bottom(canvas):
             container.update_idletasks()

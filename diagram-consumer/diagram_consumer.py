@@ -28,12 +28,12 @@ os.makedirs(RAW_DIR, exist_ok=True)
 ocr = PaddleOCR(lang='en', show_log=False, use_angle_cls=False)
 
 # Load BLIP model once
-device = "cuda" if torch.cuda.is_available() else "cpu"
-blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-blip_model = BlipForConditionalGeneration.from_pretrained(
-    "Salesforce/blip-image-captioning-base",
-    use_safetensors=True
-).to(device)
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+# blip_model = BlipForConditionalGeneration.from_pretrained(
+#     "Salesforce/blip-image-captioning-base",
+#     use_safetensors=True
+# ).to(device)
 
 
 # Kafka Producer
@@ -153,12 +153,12 @@ def send_diagram_to_kafka(diagram_data, frame_id, diagram_crop):
         message_key = f"frame_{frame_id}_diagram_{diagram_data['type']}"
         future = producer.send(OUTPUT_TOPIC, key=message_key, value=message)
 
-        print(f"📤 Sent diagram {diagram_data['type']} with image (frame {frame_id})")
+        print(f"Sent diagram {diagram_data['type']} with image (frame {frame_id})")
         record_metadata = future.get(timeout=1)
-        print(f"   ✅ Partition {record_metadata.partition}, offset {record_metadata.offset}")
+        print(f"   Partition {record_metadata.partition}, offset {record_metadata.offset}")
         return True
     except Exception as e:
-        print(f"❌ KAFKA SEND FAILED for frame {frame_id}: {e}")
+        print(f"KAFKA SEND FAILED for frame {frame_id}: {e}")
         return False
     
 def infer_diagram_local(crop_bgr) -> str:
@@ -173,7 +173,7 @@ def infer_diagram_local(crop_bgr) -> str:
         caption = blip_processor.decode(out[0], skip_special_tokens=True)
         return caption
     except Exception as e:
-        print(f"⚠️ BLIP inference failed: {e}")
+        print(f"BLIP inference failed: {e}")
         return ""
 
 
@@ -191,7 +191,7 @@ def extract_text_from_diagram(diagram_region):
                             texts.append({'text': text, 'confidence': confidence})
         return texts
     except Exception as e:
-        print(f"⚠️ OCR failed: {e}")
+        print(f"OCR failed: {e}")
         return []
 
 def decode_frame(message_value, frame_id):
@@ -233,7 +233,7 @@ def process_frame(message_value, frame_id):
                 continue
 
             extracted_text = extract_text_from_diagram(diagram_crop)
-            blip_caption = infer_diagram_local(diagram_crop)
+            # blip_caption = infer_diagram_local(diagram_crop)
             diagram_data = {
                 'type': diagram_type,
                 'bbox': region['bbox'],
@@ -241,7 +241,7 @@ def process_frame(message_value, frame_id):
                 'aspect_ratio': region['aspect_ratio'],
                 'text': extracted_text,
                 'confidence': min(1.0, len(extracted_text) * 0.1 + 0.7),
-                'inference': blip_caption
+                # 'inference': blip_caption
             }
             detected_diagrams.append((diagram_data, diagram_crop))
             duplicate_filter.add_detection(diagram_type, region['bbox'], timestamp, frame_id)
@@ -250,7 +250,7 @@ def process_frame(message_value, frame_id):
             send_diagram_to_kafka(diagram_data, frame_id, crop)
 
     except Exception as e:
-        print(f"❌ Error processing frame {frame_id}: {e}")
+        print(f"Error processing frame {frame_id}: {e}")
 
 def consume_frames():
     consumer = KafkaConsumer(
@@ -261,7 +261,7 @@ def consume_frames():
         group_id="diagram-detector",
         value_deserializer=lambda m: m
     )
-    print("📡 Listening for frames...")
+    print("Listening for frames...")
     for i, message in enumerate(consumer):
         process_frame(message.value, i)
 

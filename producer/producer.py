@@ -21,7 +21,7 @@ def create_kafka_producer():
                 bootstrap_servers=KAFKA_SERVER,
                 value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             )
-            print("✅ Connected to Kafka.", flush=True)
+            print("Connected to Kafka.", flush=True)
             return producer
         except NoBrokersAvailable:
             print("Kafka not available. Retrying in 2 seconds...", flush=True)
@@ -56,7 +56,7 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
         process.terminate()
         process.wait()
         producer.flush()
-        print(f"🏁 Finished streaming {topic}", flush=True)
+        print(f"Finished streaming {topic}", flush=True)
 
 def stream_video_frames(topic: str, ffmpeg_cmd: list):
     """Extract video frames at 1 fps and stream to Kafka as JSON messages."""
@@ -70,7 +70,7 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
                 print(f"[FFmpeg:{topic}] {line}", flush=True)
 
     threading.Thread(target=log_stderr, daemon=True).start()
-    print(f"🎥 Streaming {topic} to Kafka ...", flush=True)
+    print(f"Streaming {topic} to Kafka ...", flush=True)
 
     frame_id = 0
     buffer = b""
@@ -108,14 +108,14 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
         print(f"🏁 Finished streaming {topic}", flush=True)
 
 def signal_handler(sig, frame):
-    print("\n🛑 Ctrl+C detected! Stopping streams...", flush=True)
+    print("\nCtrl+C detected! Stopping streams...", flush=True)
     stop_event.set()
 
 if __name__ == "__main__":
-    print("🚀 Starting the producer (mic + camera)...", flush=True)
+    print("Starting the producer (mic + camera)...", flush=True)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # 🎙️ AUDIO: microphone input (device 0)
+    # AUDIO: microphone input (device 0)
     audio_cmd = [
         "ffmpeg", "-f", "avfoundation",
         "-i", ":0",                 # audio device 0
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         "-vn", "-loglevel", "warning", "-"
     ]
 
-    # 🎥 VIDEO: webcam input (device 0)
+    # VIDEO: webcam input (device 0)
     video_cmd = [
         "ffmpeg", "-f", "avfoundation",
         "-framerate", "30", "-video_size", "640x480",
@@ -141,4 +141,4 @@ if __name__ == "__main__":
     t1.join()
     t2.join()
 
-    print("✅ Done streaming audio and video.", flush=True)
+    print("Done streaming audio and video.", flush=True)

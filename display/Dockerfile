@@ -1,15 +1,12 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install system dependencies for Tkinter + GUI + fonts
-RUN apt-get update && apt-get install -y \
-    python3-tk \
-    tk-dev \
-    libjpeg-dev \
-    zlib1g-dev \
-    libgl1 \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3-tk libjpeg62-turbo-dev zlib1g-dev libgl1 \
+    --fix-missing && rm -rf /var/lib/apt/lists/*
+
 
 # Copy requirements
 COPY requirements.txt .

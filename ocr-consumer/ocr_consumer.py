@@ -62,7 +62,7 @@ def send_sentence_to_kafka(sentence_data, frame_id):
         )
         
         # Log successful send attempt
-        print(f"📤 KAFKA SEND -> Topic: {OUTPUT_TOPIC}")
+        print(f"KAFKA SEND -> Topic: {OUTPUT_TOPIC}")
         print(f"   Key: {message_key}")
         print(f"   Sentence: \"{sentence_data['text']}\"")
         print(f"   Confidence: {sentence_data['confidence']:.3f}")
@@ -72,16 +72,16 @@ def send_sentence_to_kafka(sentence_data, frame_id):
         # Optional: Wait for send confirmation (can be removed for better performance)
         try:
             record_metadata = future.get(timeout=1)
-            print(f"   ✅ Sent successfully to partition {record_metadata.partition}, offset {record_metadata.offset}")
+            print(f"   Sent successfully to partition {record_metadata.partition}, offset {record_metadata.offset}")
         except Exception as send_error:
-            print(f"   ⚠️ Send confirmation failed: {send_error}")
+            print(f"   Send confirmation failed: {send_error}")
         
         print("-" * 60)
         
         return True
         
     except Exception as e:
-        print(f"❌ KAFKA SEND FAILED for frame {frame_id}: {e}")
+        print(f"KAFKA SEND FAILED for frame {frame_id}: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -93,9 +93,9 @@ def log_sentence_batch(sentences, frame_id, timestamp):
         
     readable_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
     
-    print(f"\n🚀 SENDING BATCH TO KAFKA:")
-    print(f"📊 Frame: {frame_id} | Time: {readable_time}")
-    print(f"📝 Sentences to send: {len(sentences)}")
+    print(f"\nSENDING BATCH TO KAFKA:")
+    print(f"Frame: {frame_id} | Time: {readable_time}")
+    print(f"Sentences to send: {len(sentences)}")
     print("=" * 60)
     
     for i, sentence in enumerate(sentences, 1):
@@ -227,7 +227,7 @@ def preprocess_frame(frame):
     """Preprocess frame for OCR with validation"""
     # Validate input frame
     if frame is None or frame.size == 0:
-        print("⚠️ Invalid frame for preprocessing")
+        print("Invalid frame for preprocessing")
         return None
     
     # Convert to grayscale
@@ -238,7 +238,7 @@ def preprocess_frame(frame):
     
     # Validate grayscale conversion
     if gray is None or gray.size == 0:
-        print("⚠️ Grayscale conversion failed")
+        print("Grayscale conversion failed")
         return None
     
     # Apply threshold
@@ -246,13 +246,13 @@ def preprocess_frame(frame):
     
     # Validate threshold result
     if thresh is None or thresh.size == 0:
-        print("⚠️ Threshold operation failed")
+        print("Threshold operation failed")
         return None
     
     # Scale up (but ensure reasonable dimensions)
     h, w = thresh.shape
     if h < 32 or w < 32:
-        print(f"⚠️ Image too small: {w}x{h}")
+        print(f"Image too small: {w}x{h}")
         return None
     
     # Limit maximum size to prevent memory issues
@@ -266,7 +266,7 @@ def preprocess_frame(frame):
     
     # Final validation
     if scaled is None or scaled.size == 0:
-        print("⚠️ Scaling failed")
+        print("Scaling failed")
         return None
     
     return scaled
@@ -290,14 +290,14 @@ def draw_boxes(frame, ocr_results):
                 elif isinstance(text_info, str):
                     txt, conf = text_info, 1.0
                 else:
-                    print(f"⚠️ Unexpected text_info format: {text_info}")
+                    print(f"Unexpected text_info format: {text_info}")
                     continue
                 
                 # Ensure box is valid numpy array
                 try:
                     box = np.array(box, dtype=np.float32)
                     if box.shape[0] < 4 or box.shape[1] != 2:
-                        print(f"⚠️ Invalid box dimensions: {box.shape}")
+                        print(f"Invalid box dimensions: {box.shape}")
                         continue
                         
                     box = box.astype(int)  # Convert to int for drawing
@@ -310,11 +310,11 @@ def draw_boxes(frame, ocr_results):
                                0.7, (255, 0, 0), 2)
                                
                 except (ValueError, TypeError) as box_error:
-                    print(f"⚠️ Box conversion error: {box_error}, box: {box}")
+                    print(f"Box conversion error: {box_error}, box: {box}")
                     continue
                     
         except Exception as e:
-            print(f"⚠️ Error drawing box for line: {e}")
+            print(f"Error drawing box for line: {e}")
             continue
     
     return frame
@@ -339,7 +339,7 @@ def decode_frame(message_value, frame_id):
             if frame is not None:
                 return frame, timestamp
     except Exception as e:
-        print(f"⚠️ JSON decode failed for frame {frame_id}: {e}")
+        print(f"JSON decode failed for frame {frame_id}: {e}")
 
     # Case 2: raw JPEG bytes (fallback)
     try:
@@ -347,17 +347,17 @@ def decode_frame(message_value, frame_id):
         timestamp = None  # No timestamp available in raw bytes
         return frame, timestamp
     except Exception as e:
-        print(f"⚠️ Raw JPEG decode failed for frame {frame_id}: {e}")
+        print(f"Raw JPEG decode failed for frame {frame_id}: {e}")
         return None, None
 
 def extract_ocr_data(result):
     """Extract OCR data from PaddleOCR result, handling different formats"""
     try:
-        print(f"🔍 Debug - OCR result type: {type(result)}")
+        print(f"Debug - OCR result type: {type(result)}")
         
         # Handle new predict() format vs old ocr() format
         if isinstance(result, dict):
-            print(f"🔍 Debug - Dict keys: {list(result.keys())}")
+            print(f"Debug - Dict keys: {list(result.keys())}")
             
             # New format: result is a dict with keys like 'dt_polys', 'rec_texts', etc.
             if 'dt_polys' in result and 'rec_texts' in result:
@@ -365,7 +365,7 @@ def extract_ocr_data(result):
                 texts = result['rec_texts']
                 scores = result.get('rec_scores', [1.0] * len(texts))
                 
-                print(f"🔍 Debug - Found {len(texts)} texts, {len(boxes)} boxes, {len(scores)} scores")
+                print(f"Debug - Found {len(texts)} texts, {len(boxes)} boxes, {len(scores)} scores")
                 
                 # Combine into expected format: [[box, (text, score)], ...]
                 ocr_data = []
@@ -374,31 +374,31 @@ def extract_ocr_data(result):
                 
                 return [ocr_data] if ocr_data else None  # Wrap in list to match old format
             else:
-                print(f"⚠️ Unknown dict format keys: {result.keys()}")
+                print(f"Unknown dict format keys: {result.keys()}")
                 return None
         
         elif isinstance(result, list):
-            print(f"🔍 Debug - List format, length: {len(result)}")
+            print(f"Debug - List format, length: {len(result)}")
             # Old format: result is already a list
             if len(result) > 0:
-                print(f"🔍 Debug - First element type: {type(result[0])}")
+                print(f"Debug - First element type: {type(result[0])}")
                 if isinstance(result[0], list) and len(result[0]) > 0:
-                    print(f"🔍 Debug - First detection: {result[0][0]}")
+                    print(f"Debug - First detection: {result[0][0]}")
             return result
         
         elif hasattr(result, '__iter__'):
             # Try to convert iterator to list
-            print(f"🔍 Debug - Converting iterator to list")
+            print(f"Debug - Converting iterator to list")
             result_list = list(result)
-            print(f"🔍 Debug - Iterator converted, length: {len(result_list)}")
+            print(f"Debug - Iterator converted, length: {len(result_list)}")
             return result_list
         
         else:
-            print(f"⚠️ Unknown result type: {type(result)}")
+            print(f"Unknown result type: {type(result)}")
             return None
             
     except Exception as e:
-        print(f"⚠️ Error extracting OCR data: {e}")
+        print(f"Error extracting OCR data: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -435,7 +435,7 @@ def group_text_into_lines(ocr_result):
             # Ensure box is a proper numpy array of coordinates
             box = np.array(box, dtype=np.float32)
             if box.shape[0] < 4 or box.shape[1] != 2:
-                print(f"⚠️ Invalid box shape: {box.shape}")
+                print(f"Invalid box shape: {box.shape}")
                 continue
                 
             # Calculate bounding box center and dimensions
@@ -453,7 +453,7 @@ def group_text_into_lines(ocr_result):
             })
             
         except Exception as e:
-            print(f"⚠️ Error processing detection: {e}")
+            print(f"Error processing detection: {e}")
             continue
     
     if not text_elements:
@@ -504,7 +504,7 @@ def filter_duplicate_sentences(sentences, timestamp, frame_id):
                 'original_frame': original_detection['frame_id'],
                 'time_diff': timestamp - original_detection['timestamp']
             })
-            print(f"🔄 Duplicate detected: \"{text[:50]}...\" (similarity: {similarity:.3f}, original frame: {original_detection['frame_id']})")
+            print(f"Duplicate detected: \"{text[:50]}...\" (similarity: {similarity:.3f}, original frame: {original_detection['frame_id']})")
         else:
             # Additional check: look for very similar recent sentences (stricter for video)
             recent_similar = False
@@ -520,13 +520,13 @@ def filter_duplicate_sentences(sentences, timestamp, frame_id):
                             'time_diff': timestamp - recent_detection['timestamp'],
                             'reason': 'high_recent_similarity'
                         })
-                        print(f"🔄 High similarity to recent frame: \"{text[:50]}...\" (similarity: {recent_similarity:.3f}, frame: {recent_detection['frame_id']})")
+                        print(f"High similarity to recent frame: \"{text[:50]}...\" (similarity: {recent_similarity:.3f}, frame: {recent_detection['frame_id']})")
                         break
             
             if not recent_similar:
                 filtered_sentences.append(sentence)
                 duplicate_filter.add_detection(text, timestamp, frame_id)
-                print(f"✨ New text: \"{text[:50]}...\"")
+                print(f"New text: \"{text[:50]}...\"")
     
     return filtered_sentences, duplicate_info
 
@@ -581,7 +581,7 @@ def process_frame(message_value, frame_id):
     try:
         frame, timestamp = decode_frame(message_value, frame_id)
         if frame is None:
-            print(f"⚠️ Frame {frame_id} could not be decoded")
+            print(f"Frame {frame_id} could not be decoded")
             return
 
         # Use current time if no timestamp from message
@@ -590,18 +590,18 @@ def process_frame(message_value, frame_id):
 
         # Validate frame dimensions and format
         if len(frame.shape) != 3 or frame.shape[2] != 3:
-            print(f"⚠️ Frame {frame_id} has invalid format: {frame.shape}")
+            print(f"Frame {frame_id} has invalid format: {frame.shape}")
             return
 
         h, w = frame.shape[:2]
         if h < 32 or w < 32:
-            print(f"⚠️ Frame {frame_id} too small: {w}x{h}")
+            print(f"Frame {frame_id} too small: {w}x{h}")
             return
 
         # Resize if too big (before preprocessing)
         if h > 1080 or w > 1920:
             frame = cv2.resize(frame, (1920, 1080))
-            print(f"🔄 Frame {frame_id} resized to 1920x1080")
+            print(f"Frame {frame_id} resized to 1920x1080")
 
         print(f"🔍 Frame {frame_id} using original image: {frame.shape}, dtype: {frame.dtype}")
 
@@ -609,46 +609,46 @@ def process_frame(message_value, frame_id):
         try:
             # Use original frame directly to avoid preprocessing issues
             try:
-                print(f"🔍 Trying ocr() method on original frame {frame_id}")
+                print(f"Trying ocr() method on original frame {frame_id}")
                 raw_result = ocr.ocr(frame)
-                print(f"🔍 Raw result type: {type(raw_result)}")
-                print(f"🔍 Raw result length: {len(raw_result) if hasattr(raw_result, '__len__') else 'no len'}")
+                print(f"Raw result type: {type(raw_result)}")
+                print(f"Raw result length: {len(raw_result) if hasattr(raw_result, '__len__') else 'no len'}")
                 
                 # Debug the actual structure
                 if raw_result:
-                    print(f"🔍 First element type: {type(raw_result[0])}")
+                    print(f"First element type: {type(raw_result[0])}")
                     if hasattr(raw_result[0], '__len__') and len(raw_result[0]) > 0:
-                        print(f"🔍 First detection type: {type(raw_result[0][0])}")
-                        print(f"🔍 First detection: {raw_result[0][0]}")
+                        print(f"First detection type: {type(raw_result[0][0])}")
+                        print(f"First detection: {raw_result[0][0]}")
                 
                 result = raw_result  # ocr() should return the right format
-                print(f"🔍 OCR (old method) completed for frame {frame_id}")
+                print(f"OCR (old method) completed for frame {frame_id}")
                 
             except Exception as old_method_error:
-                print(f"🔄 Old method failed: {old_method_error}")
-                print(f"❌ Skipping predict() method due to known issues")
+                print(f"Old method failed: {old_method_error}")
+                print(f"Skipping predict() method due to known issues")
                 cv2.imwrite(f"{DEBUG_DIR}/frame_{frame_id}_ocr_failed.jpg", frame)
                 return
             
         except Exception as ocr_error:
-            print(f"❌ OCR failed for frame {frame_id}: {ocr_error}")
+            print(f"OCR failed for frame {frame_id}: {ocr_error}")
             import traceback
             traceback.print_exc()
             cv2.imwrite(f"{DEBUG_DIR}/frame_{frame_id}_ocr_failed.jpg", frame)
             return
 
         # Debug the final result structure
-        print(f"🔍 Final result type: {type(result)}")
+        print(f"Final result type: {type(result)}")
         if result:
-            print(f"🔍 Final result length: {len(result)}")
+            print(f"Final result length: {len(result)}")
             if len(result) > 0 and result[0]:
-                print(f"🔍 First result element type: {type(result[0])}")
-                print(f"🔍 First result element length: {len(result[0])}")
+                print(f"First result element type: {type(result[0])}")
+                print(f"First result element length: {len(result[0])}")
                 if len(result[0]) > 0:
-                    print(f"🔍 First detection structure: {result[0][0]}")
+                    print(f"First detection structure: {result[0][0]}")
 
         if not result or not result[0]:
-            print(f"❌ Frame {frame_id}: No text detected")
+            print(f"Frame {frame_id}: No text detected")
             cv2.imwrite(f"{DEBUG_DIR}/frame_{frame_id}_notext.jpg", frame)
             return
 
@@ -669,13 +669,13 @@ def process_frame(message_value, frame_id):
         # Convert timestamp to readable format
         readable_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
         
-        print(f"\n🕒 Frame {frame_id} - {readable_time}")
-        print(f"📊 Detected {text_analysis['raw_detections']} text elements")
-        print(f"🔍 Original sentences: {original_sentence_count}, After filtering: {len(filtered_sentences)} ({text_analysis['duplicates_filtered']} duplicates removed)")
+        print(f"\nFrame {frame_id} - {readable_time}")
+        print(f"Detected {text_analysis['raw_detections']} text elements")
+        print(f"Original sentences: {original_sentence_count}, After filtering: {len(filtered_sentences)} ({text_analysis['duplicates_filtered']} duplicates removed)")
         
         # Show duplicate filter stats
         filter_stats = duplicate_filter.get_stats()
-        print(f"📋 Filter stats: {filter_stats['total_recent_detections']} recent detections in memory")
+        print(f"Filter stats: {filter_stats['total_recent_detections']} recent detections in memory")
         
         # Only proceed with output if we have new (non-duplicate) sentences
         if filtered_sentences:
@@ -689,25 +689,25 @@ def process_frame(message_value, frame_id):
                     successful_sends += 1
             
             # Print sentences
-            print("\n📝 NEW SENTENCES DETECTED:")
+            print("\nNEW SENTENCES DETECTED:")
             for i, sentence in enumerate(filtered_sentences, 1):
                 print(f"  Line {sentence['line_number']}: \"{sentence['text']}\"")
                 print(f"    ↳ Confidence: {sentence['confidence']:.2f}, Words: {sentence['word_count']}")
                 
-            print(f"\n📤 KAFKA SUMMARY: {successful_sends}/{len(filtered_sentences)} sentences sent successfully")
+            print(f"\nKAFKA SUMMARY: {successful_sends}/{len(filtered_sentences)} sentences sent successfully")
             
         else:
-            print("\n🔄 No new sentences (all were duplicates)")
+            print("\nNo new sentences (all were duplicates)")
         
         # Show duplicate info if any
         if duplicate_info:
-            print(f"\n🔄 DUPLICATES FILTERED ({len(duplicate_info)}):")
+            print(f"\nDUPLICATES FILTERED ({len(duplicate_info)}):")
             for dup in duplicate_info:
                 print(f"  \"{dup['text'][:50]}...\" (sim: {dup['similarity']:.2f}, from frame {dup['original_frame']})")
         
         # Print words (optional, can comment out if too verbose)
         if text_analysis['words'] and filtered_sentences:  # Only show words if we have new sentences
-            print(f"\n🔤 INDIVIDUAL WORDS ({len(text_analysis['words'])}):")
+            print(f"\nINDIVIDUAL WORDS ({len(text_analysis['words'])}):")
             for word in text_analysis['words']:
                 print(f"  \"{word['text']}\" (conf: {word['confidence']:.2f}, line: {word['line_number']})")
 
@@ -763,7 +763,7 @@ def process_frame(message_value, frame_id):
                     f.write(f"  {sentence['text']}\n")
         
         else:
-            print("📝 Skipping detailed file output (no new content)")
+            print("Skipping detailed file output (no new content)")
 
         # Save frame with boxes (only if we have valid results)
         if result and result[0]:
@@ -781,12 +781,12 @@ def process_frame(message_value, frame_id):
 
         # Print processing result
         if output_data['has_new_content']:
-            print(f"✅ Frame {frame_id} processed with NEW content.\n")
+            print(f"Frame {frame_id} processed with NEW content.\n")
         else:
-            print(f"✅ Frame {frame_id} processed - all duplicates.\n")
+            print(f"Frame {frame_id} processed - all duplicates.\n")
 
     except Exception as e:
-        print(f"❌ Error processing frame {frame_id}: {e}")
+        print(f"Error processing frame {frame_id}: {e}")
         import traceback
         traceback.print_exc()
         # Save the problematic frame for debugging
@@ -806,22 +806,22 @@ def consume_frames():
         value_deserializer=lambda m: m  # Keep as bytes for now
     )
 
-    print("📡 Listening for frames...")
-    print(f"📨 Input Topic: {INPUT_TOPIC}")
-    print(f"📤 Output Topic: {OUTPUT_TOPIC}")
+    print("Listening for frames...")
+    print(f"Input Topic: {INPUT_TOPIC}")
+    print(f"Output Topic: {OUTPUT_TOPIC}")
     print("=" * 60)
     
     for i, message in enumerate(consumer):
-        print(f"🖼 Received frame {i}")
+        print(f"Received frame {i}")
         process_frame(message.value, i)
 
 if __name__ == "__main__":
     try:
         consume_frames()
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down...")
+        print("\nShutting down...")
         producer.close()
-        print("✅ Producer closed successfully")
+        print("Producer closed successfully")
     except Exception as e:
-        print(f"❌ Fatal error: {e}")
+        print(f"Fatal error: {e}")
         producer.close()

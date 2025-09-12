@@ -17,8 +17,6 @@ services:
       KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_KRAFT_CLUSTER_ID: my-cluster-id
       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
-    volumes:
-      - kafka_data:/bitnami/kafka
 
 
   # producer:

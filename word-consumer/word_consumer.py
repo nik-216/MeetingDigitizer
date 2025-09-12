@@ -191,7 +191,7 @@ class MultiTopicKafkaConsumer:
     
     def format_diagram_detection_to_doc(self, doc, data):
         """Format diagram detection message for Word document"""
-        doc.add_heading(f'📊 Diagram Detection', level=2)
+        doc.add_heading(f'Diagram Detection', level=2)
         
         # Add timestamp
         timestamp = data.get('detection_timestamp', time.time())
