@@ -98,7 +98,8 @@ def consume_diagram(consumer, container, canvas):
         text = (f"[Frame {msg['frame_id']}] Diagram: {msg['diagram_type']} "
                 f"(Conf: {msg['confidence']:.2f}, Area: {msg['area']}, "
                 f"Aspect: {msg['aspect_ratio']}, Time: {msg['readable_time']}) "
-                f"Text: {extracted}")
+                f"Text: {extracted}"
+                f"Inference: {msg['inference']}")
 
         lbl = tk.Label(
             container, text=text, font=("Arial", 12),

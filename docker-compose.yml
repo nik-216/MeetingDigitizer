@@ -4,6 +4,7 @@ services:
     image: bitnami/kafka:latest
     hostname: kafka
     container_name: kafka
+    # command: ["/bin/bash", "-c", "/kafka-setup.sh"]
     ports:
       - "9092:9092"   # internal (for containers)
       - "9094:9094"   # external (for host / macOS)
@@ -19,21 +20,23 @@ services:
       KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
 
 
-  # producer:
-  #   build: ./producer
-  #   restart: on-failure
-  #   depends_on:
-  #     - kafka
-  #   volumes:
-  #     - ./input:/input
-
-  spark:
-    build: ./spark
+  producer:
+    build: ./producer
+    restart: on-failure
     depends_on:
       - kafka
     volumes:
       - ./input:/input
-      - ./output:/output
+      - ./producer:/app
+
+  # spark:
+  #   build: ./spark
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./input:/input
+  #     - ./output:/output
+  #     - ./spark:/app
 
   # video-consumer:
   #   build: ./video-consumer
@@ -76,14 +79,14 @@ services:
       - ./audio-consumer:/app
       - ./output/audio:/output
       
-  diagram-consumer:
-    build: ./diagram-consumer
-    restart: on-failure
-    depends_on:
-      - kafka
-    volumes:
-      - ./diagram-consumer:/app
-      - ./output/diagram:/output
+  # diagram-consumer:
+  #   build: ./diagram-consumer
+  #   restart: on-failure
+  #   depends_on:
+  #     - kafka
+  #   volumes:
+  #     - ./diagram-consumer:/app
+  #     - ./output/diagram:/output
 
   ocr-consumer:
     build: ./ocr-consumer

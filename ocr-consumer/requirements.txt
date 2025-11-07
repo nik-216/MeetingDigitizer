@@ -5,5 +5,5 @@ Pillow
 numpy==1.26.4
 opencv-python-headless==4.8.1.78
 paddleocr==2.7.3
-paddlepaddle==2.6.0
+paddlepaddle
 av==12.3.0

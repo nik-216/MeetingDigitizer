@@ -12,8 +12,16 @@ while ! nc -z localhost 9092; do
 done
 echo "Kafka is up!"
 
-# Create topics
-/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic video-stream --partitions 1 --replication-factor 1 || true
-/opt/bitnami/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic audio-stream --partitions 1 --replication-factor 1 || true
+echo "Purging all existing Kafka topics..."
+EXISTING_TOPICS=$(/opt/bitnami/kafka/bin/kafka-topics.sh --list --bootstrap-server localhost:9092 || true)
 
-echo "Topics created."
+if [ -n "$EXISTING_TOPICS" ]; then
+  echo "Deleting topics:"
+  echo "$EXISTING_TOPICS"
+  for topic in $EXISTING_TOPICS; do
+    /opt/bitnami/kafka/bin/kafka-topics.sh --delete --topic "$topic" --bootstrap-server localhost:9092 || true
+  done
+  echo "All topics deleted."
+else
+  echo "No topics to delete."
+fi

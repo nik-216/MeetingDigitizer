@@ -190,8 +190,8 @@ class MultiTopicKafkaConsumer:
         self.add_separator_to_doc(doc)
     
     def format_diagram_detection_to_doc(self, doc, data):
-        """Format diagram detection message for Word document"""
-        doc.add_heading(f'Diagram Detection', level=2)
+        """Format diagram detection message for Word document (without image, add inference)"""
+        doc.add_heading('📊 Diagram Detection', level=2)
         
         # Add timestamp
         timestamp = data.get('detection_timestamp', time.time())
@@ -199,58 +199,36 @@ class MultiTopicKafkaConsumer:
         p = doc.add_paragraph()
         p.add_run(f"Timestamp: {readable_time}").bold = True
         
-        # Add frame info
+        # Add frame info and type
         frame_id = data.get('frame_id', 'N/A')
         diagram_type = data.get('diagram_type', 'Unknown')
         p = doc.add_paragraph(f"Frame ID: {frame_id} | Type: {diagram_type}")
         
-        # Add bounding box and dimensions
-        bbox = data.get('bbox', [])
-        area = data.get('area', 0)
-        aspect_ratio = data.get('aspect_ratio', 0)
-        p = doc.add_paragraph(f"Bounding Box: {bbox}")
-        p = doc.add_paragraph(f"Area: {area} | Aspect Ratio: {aspect_ratio:.2f}")
+        # # Add bounding box and dimensions
+        # bbox = data.get('bbox', [])
+        # area = data.get('area', 0)
+        # aspect_ratio = data.get('aspect_ratio', 0)
+        # p = doc.add_paragraph(f"Bounding Box: {bbox}")
+        # p = doc.add_paragraph(f"Area: {area} | Aspect Ratio: {aspect_ratio:.2f}")
         
-        # Add confidence
-        confidence = data.get('confidence', 0)
-        p = doc.add_paragraph(f"Confidence: {confidence:.2f}")
+        # # Add confidence
+        # confidence = data.get('confidence', 0)
+        # p = doc.add_paragraph(f"Confidence: {confidence:.2f}")
         
-        # Add extracted text
+        # Add extracted text (if available)
         extracted_text = data.get('extracted_text', [])
         if extracted_text:
             p = doc.add_paragraph()
             p.add_run("Extracted Text: ").bold = True
             p.add_run(str(extracted_text))
+
+        # Add inference text
+        inference_text = data.get('inference', 'N/A')
+        p = doc.add_paragraph()
+        p.add_run("Inference: ").bold = True
+        p.add_run(inference_text)
         
-        # Embed diagram image directly in document
-        diagram_b64 = data.get('diagram_image')
-        if diagram_b64:
-            try:
-                # Decode base64 image
-                image_data = base64.b64decode(diagram_b64)
-                
-                # Create temporary image file
-                temp_filename = f"temp_diagram_{frame_id}_{int(timestamp)}.png"
-                temp_filepath = os.path.join(self.output_dir, temp_filename)
-                
-                # Save temporary image
-                with open(temp_filepath, 'wb') as f:
-                    f.write(image_data)
-                
-                # Add image to document
-                p = doc.add_paragraph()
-                p.add_run("Diagram Image:").bold = True
-                doc.add_picture(temp_filepath, width=Inches(5))
-                
-                # Clean up temporary file
-                os.remove(temp_filepath)
-                
-                logger.info(f"Embedded diagram image for frame {frame_id}")
-                
-            except Exception as e:
-                logger.error(f"Error embedding diagram image: {e}")
-                p = doc.add_paragraph(f"Diagram Image: Error loading image - {str(e)}")
-        
+        # Separator
         self.add_separator_to_doc(doc)
     
     def save_all_documents(self):

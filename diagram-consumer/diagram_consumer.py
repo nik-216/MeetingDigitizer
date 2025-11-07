@@ -10,13 +10,15 @@ from paddleocr import PaddleOCR
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import torch
+from ultralytics import YOLO
 
-# Kafka settings
-KAFKA_SERVER = "kafka:9092"
+# ---------------- Kafka Settings ----------------
+# KAFKA_SERVER = "kafka:9092"
+KAFKA_SERVER = "localhost:9094"
 INPUT_TOPIC = "video-stream"
 OUTPUT_TOPIC = "diagram-detections"
 
-# Output directories
+# ---------------- Output Directories ----------------
 OUTPUT_DIR = "diagram-output"
 DEBUG_DIR = "debug_diagrams"
 RAW_DIR = "raw_messages"
@@ -24,31 +26,34 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DEBUG_DIR, exist_ok=True)
 os.makedirs(RAW_DIR, exist_ok=True)
 
-# Initialize OCR
+# ---------------- Initialize OCR ----------------
 ocr = PaddleOCR(lang='en', show_log=False, use_angle_cls=False)
 
-# Load BLIP model once
-# device = "cuda" if torch.cuda.is_available() else "cpu"
-# blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
-# blip_model = BlipForConditionalGeneration.from_pretrained(
-#     "Salesforce/blip-image-captioning-base",
-#     use_safetensors=True
-# ).to(device)
+# ---------------- Load BLIP Model (CPU) ----------------
+device = "cpu"  # Force CPU to prevent CUDA segfaults
+LOCAL_BLIP_PATH = "./blip-model"  # path to the downloaded folder
+
+blip_processor = BlipProcessor.from_pretrained(LOCAL_BLIP_PATH)
+blip_model = BlipForConditionalGeneration.from_pretrained(LOCAL_BLIP_PATH).to(device)
 
 
-# Kafka Producer
+# ---------------- Load YOLO Segmentation Model (CPU) ----------------
+yolo_seg = YOLO("yolov8x-seg.pt")
+
+# ---------------- Kafka Producer ----------------
 producer = KafkaProducer(
     bootstrap_servers=KAFKA_SERVER,
     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
     key_serializer=lambda k: k.encode('utf-8') if k else None
 )
 
+# ---------------- Diagram Detection Classes ----------------
 class DiagramDetector:
     def __init__(self, min_area=5000, min_aspect_ratio=0.3, max_aspect_ratio=3.0):
         self.min_area = min_area
         self.min_aspect_ratio = min_aspect_ratio
         self.max_aspect_ratio = max_aspect_ratio
-
+    
     def detect_diagram_regions(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         adaptive_thresh = cv2.adaptiveThreshold(
@@ -130,12 +135,11 @@ class DiagramDuplicateFilter:
 diagram_detector = DiagramDetector()
 duplicate_filter = DiagramDuplicateFilter()
 
+# ---------------- Kafka Sending ----------------
 def send_diagram_to_kafka(diagram_data, frame_id, diagram_crop):
     try:
-        # Encode diagram crop as base64 JPEG
         _, buffer = cv2.imencode(".jpg", diagram_crop)
         diagram_b64 = base64.b64encode(buffer).decode("utf-8")
-
         message = {
             'frame_id': frame_id,
             'diagram_type': diagram_data['type'],
@@ -147,36 +151,32 @@ def send_diagram_to_kafka(diagram_data, frame_id, diagram_crop):
             'detection_timestamp': time.time(),
             'readable_time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
             'source': 'diagram_detector',
-            'diagram_image': diagram_b64   # ✅ Added image
+            'diagram_image': diagram_b64
         }
-
         message_key = f"frame_{frame_id}_diagram_{diagram_data['type']}"
         future = producer.send(OUTPUT_TOPIC, key=message_key, value=message)
-
-        print(f"Sent diagram {diagram_data['type']} with image (frame {frame_id})")
         record_metadata = future.get(timeout=1)
-        print(f"   Partition {record_metadata.partition}, offset {record_metadata.offset}")
+        print(f"Sent diagram {diagram_data['type']} (frame {frame_id}) Partition {record_metadata.partition}, offset {record_metadata.offset}")
         return True
     except Exception as e:
         print(f"KAFKA SEND FAILED for frame {frame_id}: {e}")
         return False
-    
-def infer_diagram_local(crop_bgr) -> str:
-    """Generate a description/inference for the diagram crop using BLIP."""
-    try:
-        # Convert OpenCV (BGR) to PIL (RGB)
-        crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
-        pil_img = Image.fromarray(crop_rgb)
 
+# ---------------- BLIP Inference ----------------
+def infer_diagram_local(crop_bgr) -> str:
+    try:
+        crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
+        pil_img = Image.fromarray(crop_rgb).resize((384, 384))  # resize for safety
         inputs = blip_processor(pil_img, return_tensors="pt").to(device)
         out = blip_model.generate(**inputs, max_new_tokens=50)
         caption = blip_processor.decode(out[0], skip_special_tokens=True)
+        torch.cuda.empty_cache()
         return caption
     except Exception as e:
         print(f"BLIP inference failed: {e}")
         return ""
 
-
+# ---------------- OCR ----------------
 def extract_text_from_diagram(diagram_region):
     try:
         result = ocr.ocr(diagram_region)
@@ -194,6 +194,7 @@ def extract_text_from_diagram(diagram_region):
         print(f"OCR failed: {e}")
         return []
 
+# ---------------- Decode Kafka Frame ----------------
 def decode_frame(message_value, frame_id):
     raw_path = f"{RAW_DIR}/msg_{frame_id}.bin"
     with open(raw_path, "wb") as f:
@@ -213,6 +214,26 @@ def decode_frame(message_value, frame_id):
     except:
         return None, None
 
+# ---------------- Mask Persons ----------------
+def mask_persons(image):
+    try:
+        results = yolo_seg(image, conf=0.5)
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        for r in results:
+            if r.masks is None:
+                continue
+            for cls, m in zip(r.boxes.cls, r.masks.xy):
+                if int(cls) == 0:  # person
+                    poly = np.array(m, dtype=np.int32)
+                    cv2.fillPoly(mask, [poly], 255)
+        masked_image = image.copy()
+        masked_image[mask == 255] = 0
+        return masked_image, mask
+    except Exception as e:
+        print(f"YOLO segmentation failed: {e}")
+        return image.copy(), np.zeros(image.shape[:2], dtype=np.uint8)
+
+# ---------------- Process Each Frame ----------------
 def process_frame(message_value, frame_id):
     try:
         frame, timestamp = decode_frame(message_value, frame_id)
@@ -221,27 +242,29 @@ def process_frame(message_value, frame_id):
         if timestamp is None:
             timestamp = time.time()
 
-        diagram_regions = diagram_detector.detect_diagram_regions(frame)
+        frame_masked, person_mask = mask_persons(frame)
+        diagram_regions = diagram_detector.detect_diagram_regions(frame_masked)
         detected_diagrams = []
+
         for region in diagram_regions:
             x, y, w, h = region['bbox']
-            diagram_crop = frame[y:y+h, x:x+w]
+            if np.any(person_mask[y:y+h, x:x+w] > 0):
+                continue
+            diagram_crop = frame_masked[y:y+h, x:x+w]
             diagram_type = diagram_detector.classify_diagram_type(diagram_crop)
-
             is_dup, _, _ = duplicate_filter.is_duplicate(diagram_type, region['bbox'], timestamp)
             if is_dup:
                 continue
-
             extracted_text = extract_text_from_diagram(diagram_crop)
-            # blip_caption = infer_diagram_local(diagram_crop)
+            blip_caption = infer_diagram_local(diagram_crop)
             diagram_data = {
                 'type': diagram_type,
                 'bbox': region['bbox'],
                 'area': region['area'],
                 'aspect_ratio': region['aspect_ratio'],
                 'text': extracted_text,
-                'confidence': min(1.0, len(extracted_text) * 0.1 + 0.7),
-                # 'inference': blip_caption
+                'confidence': min(1.0, len(extracted_text)*0.1 + 0.7),
+                'inference': blip_caption
             }
             detected_diagrams.append((diagram_data, diagram_crop))
             duplicate_filter.add_detection(diagram_type, region['bbox'], timestamp, frame_id)
@@ -252,6 +275,7 @@ def process_frame(message_value, frame_id):
     except Exception as e:
         print(f"Error processing frame {frame_id}: {e}")
 
+# ---------------- Kafka Consumer ----------------
 def consume_frames():
     consumer = KafkaConsumer(
         INPUT_TOPIC,
@@ -265,6 +289,7 @@ def consume_frames():
     for i, message in enumerate(consumer):
         process_frame(message.value, i)
 
+# ---------------- Main ----------------
 if __name__ == "__main__":
     try:
         consume_frames()
