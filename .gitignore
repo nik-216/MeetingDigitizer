@@ -15,3 +15,4 @@ diagram-consumer/diagram_docs
 diagram-consumer/diagram_output
 diagram-consumer/output_diagram
 diagram-consumer/raw_messages
+diagram-consumer/yolov8x-seg.pt
