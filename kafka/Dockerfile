@@ -1,15 +1,12 @@
-FROM bitnami/kafka:latest
+FROM wurstmeister/kafka:latest
 
-# Temporarily switch to root to install netcat
 USER root
 
 RUN apt-get update && \
     apt-get install -y netcat-traditional && \
-    apt-get clean
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Copy and make your script executable
 COPY --chmod=755 kafka-setup.sh /kafka-setup.sh
 
-# ✅ Switch back to the default user expected by Bitnami (typically UID 1001)
-USER 1001
-
+# The base image doesn’t define a "kafka" user — use root
+USER root

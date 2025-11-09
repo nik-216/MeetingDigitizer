@@ -7,7 +7,7 @@ import json
 import base64
 
 KAFKA_SERVER = "kafka:9092"
-VIDEO_FILE = "/input/meeting.mp4"
+VIDEO_FILE = "/input/cutsample.mp4"
 CHUNK_SIZE = 4096  # bytes (used only for audio)
 
 def create_kafka_producer():
@@ -108,6 +108,16 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
         process.wait()
         producer.flush()
         print(f"🏁 Finished streaming {topic}", flush=True)
+        
+def send_stop_signal():
+    producer = create_kafka_producer()
+    stop_msg = {"type": "STOP", "timestamp": time.time()}
+    topics = ["audio-stream", "video-stream", "diagram-detections", "ocr-sentences", "audio-transcripts"]
+    for topic in topics:
+        producer.send(topic, stop_msg)
+        print(f"[STOP] Sent stop signal to {topic}", flush=True)
+    producer.flush()
+    producer.close()
 
 if __name__ == "__main__":
     print("Starting the producer...", flush=True)
@@ -132,5 +142,8 @@ if __name__ == "__main__":
     t2 = threading.Thread(target=stream_video_frames, args=("video-stream", video_cmd))
     t1.start(); t2.start()
     t1.join(); t2.join()
+    
+    print("Sending stop signal to all consumers...", flush=True)
+    send_stop_signal()
 
     print("Done streaming audio and video.", flush=True)

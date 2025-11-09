@@ -1,24 +1,41 @@
-services:
-  kafka:
-    build: ./kafka
-    image: bitnami/kafka:latest
-    hostname: kafka
-    container_name: kafka
-    # command: ["/bin/bash", "-c", "/kafka-setup.sh"]
-    ports:
-      - "9092:9092"   # internal (for containers)
-      - "9094:9094"   # external (for host / macOS)
-    environment:
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_PROCESS_ROLES: controller,broker
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:9094,CONTROLLER://:9093
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_KRAFT_CLUSTER_ID: my-cluster-id
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+version: "3.8"
 
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    hostname: kafka
+    ports:
+      - "9092:9092"   # Internal Docker network (used by other containers)
+      - "9094:9094"   # External host access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /kafka/logs
+    volumes:
+      - kafka_data:/kafka
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+
+  kafka-setup:
+    build: ./kafka
+    depends_on:
+      - kafka
+    command: ["/bin/bash", "-c", "/kafka-setup.sh"]
+    volumes:
+      - ./kafka/kafka-setup.sh:/kafka-setup.sh
+    restart: "no"
 
   producer:
     build: ./producer
@@ -29,24 +46,6 @@ services:
       - ./input:/input
       - ./producer:/app
 
-  # spark:
-  #   build: ./spark
-  #   depends_on:
-  #     - kafka
-  #   volumes:
-  #     - ./input:/input
-  #     - ./output:/output
-  #     - ./spark:/app
-
-  # video-consumer:
-  #   build: ./video-consumer
-  #   restart: on-failure
-  #   depends_on:
-  #     - kafka
-  #   volumes:
-  #     - ./video-consumer:/app
-  #     - ./output/video:/output
-  
   display:
     build: ./display
     restart: on-failure
@@ -56,7 +55,6 @@ services:
       - DISPLAY=host.docker.internal:0
     volumes:
       - ./display:/app
-
 
   word-consumer:
     build: ./word-consumer
@@ -78,15 +76,6 @@ services:
     volumes:
       - ./audio-consumer:/app
       - ./output/audio:/output
-      
-  # diagram-consumer:
-  #   build: ./diagram-consumer
-  #   restart: on-failure
-  #   depends_on:
-  #     - kafka
-  #   volumes:
-  #     - ./diagram-consumer:/app
-  #     - ./output/diagram:/output
 
   ocr-consumer:
     build: ./ocr-consumer
@@ -96,8 +85,6 @@ services:
     volumes:
       - ./ocr-consumer:/app
       - ./output/text:/output
-
-  
 
 volumes:
   kafka_data:

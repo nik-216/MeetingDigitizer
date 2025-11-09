@@ -148,6 +148,7 @@ def send_diagram_to_kafka(diagram_data, frame_id, diagram_crop):
             'aspect_ratio': diagram_data['aspect_ratio'],
             'extracted_text': diagram_data.get('text', []),
             'confidence': diagram_data.get('confidence', 0.8),
+            'inference': diagram_data.get('inference', ""),   # 👈 FIXED HERE
             'detection_timestamp': time.time(),
             'readable_time': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
             'source': 'diagram_detector',
@@ -266,6 +267,7 @@ def process_frame(message_value, frame_id):
                 'confidence': min(1.0, len(extracted_text)*0.1 + 0.7),
                 'inference': blip_caption
             }
+            print(diagram_data)
             detected_diagrams.append((diagram_data, diagram_crop))
             duplicate_filter.add_detection(diagram_type, region['bbox'], timestamp, frame_id)
 
