@@ -18,3 +18,4 @@ diagram-consumer/raw_messages
 diagram-consumer/yolov8x-seg.pt
 
 summarizer-consumer/pegasus_model/
+*.safetensors
