@@ -5,11 +5,37 @@ import threading
 import time
 import json
 import base64
+from kafka.admin import KafkaAdminClient, NewTopic
+from kafka.errors import TopicAlreadyExistsError
 
 KAFKA_SERVER = "kafka:9092"
 VIDEO_FILE = "/input/cutsample.mp4"
 CHUNK_SIZE = 4096  # bytes (used only for audio)
 
+
+TOPICS = ["audio-stream", "video-stream", "diagram-detections", "ocr-sentences", "audio-transcripts", "summarizer"]
+
+def clear_kafka_topics():
+    """Delete and recreate topics to clear them."""
+    admin = KafkaAdminClient(bootstrap_servers=KAFKA_SERVER)
+    try:
+        admin.delete_topics(TOPICS)
+        print(f"[Kafka Admin] Deleted topics: {TOPICS}", flush=True)
+        # Small delay to ensure topics are deleted
+        time.sleep(2)
+    except Exception as e:
+        print(f"[Kafka Admin] Warning: could not delete topics: {e}", flush=True)
+    
+    # Recreate topics
+    new_topics = [NewTopic(name=t, num_partitions=1, replication_factor=1) for t in TOPICS]
+    try:
+        admin.create_topics(new_topics)
+        print(f"[Kafka Admin] Recreated topics: {TOPICS}", flush=True)
+    except TopicAlreadyExistsError:
+        print("[Kafka Admin] Topics already exist, continuing...", flush=True)
+    finally:
+        admin.close()
+        
 def create_kafka_producer():
     """Retry KafkaProducer connection until Kafka is ready."""
     while True:
@@ -120,6 +146,9 @@ def send_stop_signal():
     producer.close()
 
 if __name__ == "__main__":
+    print("Clearing Kafka topics before streaming...", flush=True)
+    clear_kafka_topics()
+    
     print("Starting the producer...", flush=True)
 
     # AUDIO: unchanged

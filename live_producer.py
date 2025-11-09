@@ -1,6 +1,7 @@
 import subprocess
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
+from kafka import KafkaProducer, KafkaAdminClient
+from kafka.admin import NewTopic
+from kafka.errors import NoBrokersAvailable, TopicAlreadyExistsError
 import threading
 import time
 import json
@@ -8,6 +9,8 @@ import base64
 
 KAFKA_SERVER = "localhost:9094"
 CHUNK_SIZE = 4096  # bytes (used only for audio)
+TOPICS = ["audio-stream", "video-stream", "diagram-detections", "ocr-sentences", "audio-transcripts"]
+
 
 def create_kafka_producer():
     """Retry KafkaProducer connection until Kafka is ready."""
@@ -23,6 +26,45 @@ def create_kafka_producer():
             print("Kafka not available. Retrying in 2 seconds...", flush=True)
             time.sleep(2)
 
+
+def clear_topics():
+    """Delete and recreate topics to clear them."""
+    while True:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=KAFKA_SERVER)
+            # Delete topics
+            for topic in TOPICS:
+                try:
+                    admin.delete_topics([topic])
+                    print(f"Deleted topic: {topic}")
+                except Exception as e:
+                    print(f"Failed to delete {topic} (may not exist): {e}")
+
+            # Recreate topics
+            for topic in TOPICS:
+                try:
+                    admin.create_topics([NewTopic(name=topic, num_partitions=1, replication_factor=1)])
+                    print(f"Created topic: {topic}")
+                except TopicAlreadyExistsError:
+                    print(f"Topic already exists: {topic}")
+            admin.close()
+            break
+        except NoBrokersAvailable:
+            print("Kafka not available for admin. Retrying in 2 seconds...")
+            time.sleep(2)
+
+
+def send_stop_signal():
+    """Send stop/completed signal to all topics."""
+    producer = create_kafka_producer()
+    stop_msg = {"type": "STOP", "timestamp": time.time()}
+    for topic in TOPICS:
+        producer.send(topic, stop_msg)
+        print(f"[STOP] Sent stop signal to {topic}")
+    producer.flush()
+    producer.close()
+
+
 def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
     producer = create_kafka_producer()
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -34,7 +76,7 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
                 print(f"[FFmpeg:{topic}] {line}", flush=True)
 
     threading.Thread(target=log_stderr, daemon=True).start()
-    print(f"🎙️ Streaming {topic} to Kafka ...", flush=True)
+    print(f"Streaming {topic} to Kafka ...", flush=True)
 
     try:
         while True:
@@ -47,7 +89,6 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
                 "data": base64.b64encode(chunk).decode("utf-8"),
             }
             producer.send(topic, message)
-
             print(f"[Producer] Sent audio chunk (size={len(chunk)})", flush=True)
 
     finally:
@@ -55,6 +96,7 @@ def stream_audio_to_kafka(topic: str, ffmpeg_cmd: list):
         process.wait()
         producer.flush()
         print(f"Finished streaming {topic}", flush=True)
+
 
 def stream_video_frames(topic: str, ffmpeg_cmd: list):
     producer = create_kafka_producer()
@@ -79,8 +121,8 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
                 break
 
             buffer += chunk
-            start = buffer.find(b"\xff\xd8")  # JPEG SOI
-            end = buffer.find(b"\xff\xd9")    # JPEG EOI
+            start = buffer.find(b"\xff\xd8")
+            end = buffer.find(b"\xff\xd9")
 
             while start != -1 and end != -1 and end > start:
                 jpeg_bytes = buffer[start:end+2]
@@ -107,12 +149,12 @@ def stream_video_frames(topic: str, ffmpeg_cmd: list):
 
 
 if __name__ == "__main__":
+    print("Clearing all topics before streaming...", flush=True)
+    clear_topics()
+
     print("Starting the producer...", flush=True)
 
-    # Use avfoundation devices on macOS
-    # Check devices with: ffmpeg -f avfoundation -list_devices true -i ""
-
-    # AUDIO: default mic (device 0)
+    # AUDIO: default mic (macOS avfoundation)
     audio_cmd = [
         "ffmpeg", "-f", "avfoundation", "-i", ":0",
         "-f", "s16le", "-acodec", "pcm_s16le",
@@ -120,13 +162,13 @@ if __name__ == "__main__":
         "-vn", "-loglevel", "warning", "-"
     ]
 
-    # VIDEO: default webcam (device 0)
+    # VIDEO: default webcam
     video_cmd = [
         "ffmpeg", "-f", "avfoundation",
         "-framerate", "30", "-video_size", "1280x720",
         "-pixel_format", "uyvy422",
-        "-i", "0:none",               # FaceTime HD Camera, no audio
-        "-vf", "fps=1",               # downsample to 1 frame per second
+        "-i", "0:none",
+        "-vf", "fps=1",
         "-f", "image2pipe", "-qscale:v", "2",
         "-vcodec", "mjpeg", "-loglevel", "warning", "-"
     ]
@@ -135,5 +177,8 @@ if __name__ == "__main__":
     t2 = threading.Thread(target=stream_video_frames, args=("video-stream", video_cmd))
     t1.start(); t2.start()
     t1.join(); t2.join()
+
+    print("Sending stop signal to all consumers...", flush=True)
+    send_stop_signal()
 
     print("Done streaming audio and video.", flush=True)

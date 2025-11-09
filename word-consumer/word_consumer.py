@@ -11,6 +11,7 @@ from docx.oxml.shared import OxmlElement, qn
 import threading
 from queue import PriorityQueue
 import logging
+from kafka import KafkaProducer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +50,32 @@ class MultiTopicKafkaConsumer:
         
         # Track processed messages count
         self.processed_count = 0
+        
+        self.completed_topics = set()
+        
+        # Producer to notify summarizer
+        self.summarizer_topic = "summarizer"
+        self.producer = KafkaProducer(
+            bootstrap_servers=self.bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+    
+    def check_and_notify_summarizer(self):
+        """Check if all topics are completed, then send START signal to summarizer"""
+        required_topics = set(['audio-transcripts', 'ocr-sentences', 'diagram-detections'])
+        if self.completed_topics >= required_topics:
+            start_msg = {
+                "type": "START",
+                "timestamp": time.time(),
+                "readable_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                "source": "multi_topic_consumer"
+            }
+            self.producer.send(self.summarizer_topic, start_msg)
+            self.producer.flush()
+            print(f"[SUMMARIZER] START signal sent to topic '{self.summarizer_topic}'")
+            
+            # Optionally clear completed topics to allow future sessions
+            # self.completed_topics.clear()
         
     def get_timestamp_from_message(self, message_data, topic):
         """Extract timestamp from message based on topic"""
@@ -284,6 +311,13 @@ class MultiTopicKafkaConsumer:
                 try:
                     topic = message.topic
                     message_data = message.value
+                    
+                    # Check for COMPLETED signal
+                    if isinstance(message_data, dict) and message_data.get("type") == "COMPLETED":
+                        logger.info(f"[STOP] COMPLETED signal received from topic {topic}")
+                        self.completed_topics.add(topic)
+                        self.check_and_notify_summarizer()
+                        continue  # skip adding to normal message lists
                     
                     # Get timestamp for ordering
                     timestamp = self.get_timestamp_from_message(message_data, topic)

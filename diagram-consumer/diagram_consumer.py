@@ -11,6 +11,7 @@ from transformers import BlipProcessor, BlipForConditionalGeneration
 from PIL import Image
 import torch
 from ultralytics import YOLO
+from kafka.admin import KafkaAdminClient, NewTopic
 
 # ---------------- Kafka Settings ----------------
 # KAFKA_SERVER = "kafka:9092"
@@ -276,6 +277,40 @@ def process_frame(message_value, frame_id):
 
     except Exception as e:
         print(f"Error processing frame {frame_id}: {e}")
+        
+# ---------------- Kafka Consumer ----------------
+def send_completed_signal():
+    """Send a completion signal when stop message is received."""
+    completed_msg = {
+        "type": "COMPLETED",
+        "timestamp": time.time(),
+        "readable_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+        "source": "diagram_detector"
+    }
+    producer.send(OUTPUT_TOPIC, value=completed_msg)
+    producer.flush()
+    print("[COMPLETED] Diagram detector finished processing and sent completion signal.")
+
+def clear_topic(topic_name: str):
+    """Delete and recreate a Kafka topic to clear its messages."""
+    while True:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=KAFKA_SERVER)
+            try:
+                admin.delete_topics([topic_name])
+                print(f"[CLEAR] Deleted topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not delete {topic_name} (maybe doesn't exist): {e}", flush=True)
+            try:
+                admin.create_topics([NewTopic(name=topic_name, num_partitions=1, replication_factor=1)])
+                print(f"[CLEAR] Recreated topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not create {topic_name} (maybe already exists): {e}", flush=True)
+            admin.close()
+            break
+        except Exception as e:
+            print(f"[CLEAR] Admin error: {e}. Retrying in 2s...", flush=True)
+            time.sleep(2)
 
 # ---------------- Kafka Consumer ----------------
 def consume_frames():
@@ -288,8 +323,26 @@ def consume_frames():
         value_deserializer=lambda m: m
     )
     print("Listening for frames...")
+
     for i, message in enumerate(consumer):
-        process_frame(message.value, i)
+        try:
+            # decode message to check for stop signal
+            msg_text = message.value.decode("utf-8", errors="ignore")
+            if "STOP" in msg_text:
+                print("[STOP] Received stop signal. Sending completion message and shutting down.")
+                clear_topic(INPUT_TOPIC)
+                send_completed_signal()
+                break  # exit consumer loop cleanly
+
+            # process normal video frame
+            process_frame(message.value, i)
+
+        except Exception as e:
+            print(f"Error handling Kafka message {i}: {e}")
+
+    consumer.close()
+    producer.close()
+    print("[EXIT] Diagram detector consumer closed.")
 
 # ---------------- Main ----------------
 if __name__ == "__main__":

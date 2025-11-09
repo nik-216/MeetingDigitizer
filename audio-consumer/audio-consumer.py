@@ -2,9 +2,10 @@ import json
 import base64
 import numpy as np
 from kafka import KafkaConsumer, KafkaProducer
-from resemblyzer import VoiceEncoder, preprocess_wav
+from resemblyzer import VoiceEncoder
 from faster_whisper import WhisperModel
-from sklearn.cluster import AgglomerativeClustering
+from kafka.admin import KafkaAdminClient, NewTopic
+import time
 
 # Topics
 INPUT_TOPIC = "audio-stream"
@@ -147,6 +148,49 @@ def _parse_payload(raw):
     raise TypeError(f"Unexpected message.value type: {type(raw)}")
 
 
+def send_completed_signal():
+    """Send a completion signal to the audio-transcripts Kafka topic."""
+    try:
+        completed_message = {
+            "type": "COMPLETED",
+            "timestamp": time.time(),
+            "readable_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+            "source": "audio_consumer"
+        }
+
+        producer.send(
+            OUTPUT_TOPIC,
+            key="completed_signal".encode('utf-8'),
+            value=completed_message
+        )
+        producer.flush()
+        print(f"[COMPLETED] Sent completion signal to {OUTPUT_TOPIC}", flush=True)
+
+    except Exception as e:
+        print(f"[COMPLETED] Failed to send completion signal: {e}", flush=True)
+
+
+def clear_topic(topic_name: str):
+    """Delete and recreate a Kafka topic to clear its messages."""
+    while True:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=[BOOTSTRAP_SERVERS])
+            try:
+                admin.delete_topics([topic_name])
+                print(f"[CLEAR] Deleted topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not delete {topic_name} (maybe doesn't exist): {e}", flush=True)
+            try:
+                admin.create_topics([NewTopic(name=topic_name, num_partitions=1, replication_factor=1)])
+                print(f"[CLEAR] Recreated topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not create {topic_name} (maybe already exists): {e}", flush=True)
+            admin.close()
+            break
+        except Exception as e:
+            print(f"[CLEAR] Admin error: {e}. Retrying in 2s...", flush=True)
+            time.sleep(2)
+
 def main():
     consumer = KafkaConsumer(
         INPUT_TOPIC,
@@ -163,6 +207,15 @@ def main():
     for msg in consumer:
         try:
             payload = _parse_payload(msg.value)
+
+            # Detect STOP signal
+            if isinstance(payload, dict) and payload.get("type") == "STOP":
+                print(f"[STOP] Signal received on topic {INPUT_TOPIC}", flush=True)
+                clear_topic(INPUT_TOPIC)
+                send_completed_signal()
+                break  # exit loop to shutdown
+
+            # Normal audio processing
             audio_bytes = base64.b64decode(payload["data"])
             ts = float(payload["timestamp"])
             last_ts = ts
@@ -177,6 +230,11 @@ def main():
         except Exception as e:
             print(f"[Audio Consumer] Error: {e}", flush=True)
 
+    # Cleanup
+    print("[Audio Consumer] Shutting down...", flush=True)
+    producer.close()
+    consumer.close()
+    print("[Audio Consumer] Producer and consumer closed successfully.", flush=True)
 
 if __name__ == "__main__":
     main()

@@ -8,6 +8,7 @@ from collections import deque
 from difflib import SequenceMatcher
 from kafka import KafkaConsumer, KafkaProducer
 from paddleocr import PaddleOCR
+from kafka.admin import KafkaAdminClient, NewTopic
 
 # Kafka settings
 KAFKA_SERVER = "kafka:9092"
@@ -796,6 +797,54 @@ def process_frame(message_value, frame_id):
         except:
             pass
 
+def send_completed_signal():
+    """Send a completion signal to the output Kafka topic."""
+    try:
+        completed_message = {
+            "type": "COMPLETED",
+            "timestamp": time.time(),
+            "readable_time": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()),
+            "source": "ocr_consumer"
+        }
+        
+        producer.send(
+            OUTPUT_TOPIC,
+            key="completed_signal".encode('utf-8'),
+            value=completed_message
+        )
+        producer.flush()
+        
+        print(f"[COMPLETED] Sent completion signal to {OUTPUT_TOPIC}")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"Failed to send completion signal: {e}")
+        import traceback
+        traceback.print_exc()
+        
+
+def clear_topic(topic_name: str):
+    """Delete and recreate a Kafka topic to clear all messages."""
+    while True:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=KAFKA_SERVER)
+            try:
+                admin.delete_topics([topic_name])
+                print(f"[CLEAR] Deleted topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not delete {topic_name} (may not exist): {e}", flush=True)
+            try:
+                admin.create_topics([NewTopic(name=topic_name, num_partitions=1, replication_factor=1)])
+                print(f"[CLEAR] Recreated topic: {topic_name}", flush=True)
+            except Exception as e:
+                print(f"[CLEAR] Could not create {topic_name} (may already exist): {e}", flush=True)
+            admin.close()
+            break
+        except Exception as e:
+            print(f"[CLEAR] Admin error: {e}. Retrying in 2s...", flush=True)
+            time.sleep(2)
+
+
 def consume_frames():
     consumer = KafkaConsumer(
         INPUT_TOPIC,
@@ -812,8 +861,33 @@ def consume_frames():
     print("=" * 60)
     
     for i, message in enumerate(consumer):
-        print(f"Received frame {i}")
-        process_frame(message.value, i)
+        try:
+            # Attempt to decode message as JSON to check for STOP type
+            try:
+                msg_data = json.loads(message.value.decode('utf-8'))
+                if isinstance(msg_data, dict) and msg_data.get("type") == "STOP":
+                    print(f"[STOP] Signal received on topic {INPUT_TOPIC}")
+                    clear_topic(INPUT_TOPIC)
+                    send_completed_signal()
+                    break
+            except Exception:
+                # Not a STOP message, proceed as normal frame
+                pass
+
+            print(f"Received frame {i}")
+            process_frame(message.value, i)
+        
+        except Exception as e:
+            print(f"Error in consumer loop at frame {i}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # Cleanup
+    print("\nShutting down consumer...")
+    producer.close()
+    consumer.close()
+    print("Kafka producer and consumer closed successfully.")
+    print("=" * 60)
 
 if __name__ == "__main__":
     try:

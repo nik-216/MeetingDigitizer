@@ -4,6 +4,10 @@ from typing import List, Dict, Optional
 from docx import Document
 from transformers import PegasusTokenizer, PegasusForConditionalGeneration
 import torch
+from kafka import KafkaConsumer, KafkaProducer
+import json
+import time
+
 
 # ---------------- Timestamp Extraction ----------------
 _BASE_DT = None
@@ -62,7 +66,6 @@ def read_audio_docx(path: str):
                 })
                 current_t, speaker, transcript = None, None, None
     return entries
-
 
 def read_ocr_docx(path: str):
     global _BASE_DT
@@ -230,10 +233,37 @@ def summarize_docx(input_path: str, output_path: str, model_dir: str = "pegasus-
     summary_doc.add_paragraph(final_summary)
     summary_doc.save(output_path)
     print(f"Summary saved to: {output_path}")
+    
+# ---------------- Kafka Listener ----------------
+def wait_for_start_signal(kafka_servers=['kafka:9092'], topic='summarizer', group_id='summarizer-consumer'):
+    """Wait for START signal from the summarizer Kafka topic."""
+    consumer = KafkaConsumer(
+        topic,
+        bootstrap_servers=kafka_servers,
+        auto_offset_reset='earliest',
+        enable_auto_commit=True,
+        group_id=group_id,
+        value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+    )
+    print(f"[SUMMARIZER] Waiting for START signal on topic '{topic}'...")
+    for message in consumer:
+        msg = message.value
+        if isinstance(msg, dict) and msg.get("type") == "START":
+            print(f"[SUMMARIZER] START signal received at {msg.get('readable_time', time.time())}")
+            # Optionally commit and close consumer to clear messages
+            consumer.close()
+            break
 
 
 # ---------------- Main ----------------
 if __name__ == "__main__":
+    KAFKA_SERVERS = ['kafka:9092']
+    SUMMARIZER_TOPIC = 'summarizer'
+
+    # Wait for START signal
+    wait_for_start_signal(KAFKA_SERVERS, SUMMARIZER_TOPIC)
+
+    # Once START signal is received, run merge + summarization
     merge_docx_files(
         "../output/audio_transcripts.docx",
         "../output/ocr_sentences.docx",

@@ -46,14 +46,15 @@ def is_at_bottom(canvas):
 def consume_audio(consumer, container, canvas):
     for message in consumer:
         msg = message.value
+        if msg.get("type") == "STOP":
+            continue  # ignore stop/completed signals
         text = f"[{msg['speaker']}] {msg['start']:.2f}-{msg['end']:.2f}s: {msg['text']}"
         lbl = tk.Label(
             container, text=text, font=("Arial", 12),
             anchor="w", justify="left", bg="black", fg="white",
-            wraplength=480  # ensures text fits inside panel
+            wraplength=480
         )
         lbl.pack(anchor="w", padx=5, pady=2)
-
         if is_at_bottom(canvas):
             container.update_idletasks()
             canvas.yview_moveto(1.0)
@@ -63,17 +64,17 @@ def consume_audio(consumer, container, canvas):
 def consume_ocr(consumer, container, canvas):
     for message in consumer:
         msg = message.value
+        if msg.get("type") == "STOP":
+            continue
         text = (f"[Frame {msg['frame_id']}] OCR: \"{msg['sentence']}\" "
                 f"(Conf: {msg['confidence']:.2f}, Words: {msg['word_count']}, "
                 f"Line: {msg['line_number']}, Time: {msg['readable_time']})")
-
         lbl = tk.Label(
             container, text=text, font=("Arial", 12),
             anchor="w", justify="left", bg="black", fg="lightgreen",
             wraplength=480
         )
         lbl.pack(anchor="w", padx=5, pady=2)
-
         if is_at_bottom(canvas):
             container.update_idletasks()
             canvas.yview_moveto(1.0)
@@ -83,6 +84,8 @@ def consume_ocr(consumer, container, canvas):
 def consume_diagram(consumer, container, canvas):
     for message in consumer:
         msg = message.value
+        if msg.get("type") == "STOP":
+            continue
         extracted = msg.get('extracted_text', [])
         if isinstance(extracted, list):
             extracted = " ".join(
@@ -90,8 +93,6 @@ def consume_diagram(consumer, container, canvas):
             ) if extracted else "(no text)"
         elif not extracted:
             extracted = "(no text)"
-            
-        # print(msg)  # Debug: print the entire message
 
         text = (
             f"[Frame {msg['frame_id']}] Diagram: {msg['diagram_type']} "
@@ -107,21 +108,13 @@ def consume_diagram(consumer, container, canvas):
             wraplength=480
         )
         lbl.pack(anchor="w", padx=5, pady=2)
-        
-        # inf_lbl = tk.Label(
-        #     container, text=f"Inference: {inference}",
-        #     font=("Arial", 12, "italic"),
-        #     anchor="w", justify="left", bg="black", fg="cyan",
-        #     wraplength=480
-        # )
-        # inf_lbl.pack(anchor="w", padx=5, pady=2)
 
         # If image is present, decode and display it
         if "diagram_image" in msg:
             try:
                 img_bytes = base64.b64decode(msg["diagram_image"])
                 img = Image.open(io.BytesIO(img_bytes))
-                img.thumbnail((450, 300))  # 👈 keeps image bounded inside section
+                img.thumbnail((450, 300))
                 tk_img = ImageTk.PhotoImage(img)
 
                 img_label = tk.Label(container, image=tk_img, bg="black")
@@ -133,7 +126,6 @@ def consume_diagram(consumer, container, canvas):
         if is_at_bottom(canvas):
             container.update_idletasks()
             canvas.yview_moveto(1.0)
-
 
 # Mousewheel Binding
 def bind_mousewheel(canvas):

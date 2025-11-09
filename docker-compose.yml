@@ -86,5 +86,19 @@ services:
       - ./ocr-consumer:/app
       - ./output/text:/output
 
+  summarizer:
+    build: ./summarizer
+    restart: on-failure
+    depends_on:
+      - kafka
+      - word-consumer
+      - audio-consumer
+      - ocr-consumer
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:9092
+    volumes:
+      - ./output:/app/output
+      - ./summarizer:/app
+
 volumes:
   kafka_data:
