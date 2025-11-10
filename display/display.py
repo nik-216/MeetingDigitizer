@@ -46,7 +46,7 @@ def is_at_bottom(canvas):
 def consume_audio(consumer, container, canvas):
     for message in consumer:
         msg = message.value
-        if msg.get("type") == "STOP":
+        if msg.get("type") == "STOP" or msg.get("type") == "COMPLETED":
             continue  # ignore stop/completed signals
         text = f"[{msg['speaker']}] {msg['start']:.2f}-{msg['end']:.2f}s: {msg['text']}"
         lbl = tk.Label(
@@ -64,7 +64,7 @@ def consume_audio(consumer, container, canvas):
 def consume_ocr(consumer, container, canvas):
     for message in consumer:
         msg = message.value
-        if msg.get("type") == "STOP":
+        if msg.get("type") == "STOP" or msg.get("type") == "COMPLETED":
             continue
         text = (f"[Frame {msg['frame_id']}] OCR: \"{msg['sentence']}\" "
                 f"(Conf: {msg['confidence']:.2f}, Words: {msg['word_count']}, "
@@ -84,7 +84,7 @@ def consume_ocr(consumer, container, canvas):
 def consume_diagram(consumer, container, canvas):
     for message in consumer:
         msg = message.value
-        if msg.get("type") == "STOP":
+        if msg.get("type") == "STOP" or msg.get("type") == "COMPLETED":
             continue
         extracted = msg.get('extracted_text', [])
         if isinstance(extracted, list):

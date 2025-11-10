@@ -9,7 +9,7 @@ from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError
 
 KAFKA_SERVER = "kafka:9092"
-VIDEO_FILE = "/input/cutsample.mp4"
+VIDEO_FILE = "/input/pesu_sds.mp4"
 CHUNK_SIZE = 4096  # bytes (used only for audio)
 
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     t1.start(); t2.start()
     t1.join(); t2.join()
     
-    print("Sending stop signal to all consumers...", flush=True)
-    send_stop_signal()
+    # print("Sending stop signal to all consumers...", flush=True)
+    # send_stop_signal()
 
     print("Done streaming audio and video.", flush=True)
