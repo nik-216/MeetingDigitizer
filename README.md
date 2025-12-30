@@ -43,6 +43,12 @@ The architecture diagram illustrates the end-to-end data flow of the M²-DSUM sy
 git clone https://github.com/nik-216/MeetingDigitizer.git
 cd m2-dsum
 ```
+
+### 2. Install all the models
+```bash
+python installations.py
+```
+
 ### 2. Start Kafka and all the modules
 ```bash
 docker-compose up --build
