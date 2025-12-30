@@ -49,7 +49,7 @@ cd m2-dsum
 python installations.py
 ```
 
-### 2. Start Kafka and all the modules
+### 3. Start Kafka and all the modules
 ```bash
 docker-compose up --build
 ```
